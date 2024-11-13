@@ -60,8 +60,10 @@
 ---
 --- Notification is a table with the following keys:
 ---
---- - <msg> `(string)` - single string with notification message.
+--- - <msg> `(string|table)` - single string with notification message or table of chunk sequences.
 ---   Use `\n` to delimit several lines.
+---   If table, each such sequence has form like the third argument of the callback of `vim.ui_attach`
+---   for example `vim.notify({{ { 24, "Mini ", 31 }, { 44, "Notify", 32 } }, { { 24, "Next ", 33 }, { 44, "Line", 34 }}})`
 --- - <level> `(string)` - notification level as key of |vim.log.levels|.
 ---   Like "ERROR", "WARN", "INFO", etc.
 --- - <hl_group> `(string)` - highlight group with which notification is shown.
@@ -341,7 +343,7 @@ MiniNotify.add = function(msg, level, hl_group)
   H.validate_hl_group(hl_group)
 
   local cur_ts = H.get_timestamp()
-  local new_notif = { msg = msg, level = level, hl_group = hl_group, ts_add = cur_ts, ts_update = cur_ts }
+  local new_notif = { msg = msg, level = level, hl_group = hl_group, ts_add = cur_ts, ts_update = cur_ts, is_chunked = type(msg) == 'table' }
 
   local new_id = #H.history + 1
   -- NOTE: Crucial to use the same table here and later only update values
@@ -697,6 +699,14 @@ H.buffer_create = function()
   return buf_id
 end
 
+local hls = setmetatable({}, {
+  __index = function (t, id)
+    return rawget(t, id) or (rawset(t, id, vim.fn.synIDattr(id, 'name')) and rawget(t, id))
+  end
+})
+
+local extmarkOpts = {end_row = 0, end_col = 0, hl_group = 'Normal', hl_eol = true, hl_mode = 'combine'}
+
 H.buffer_refresh = function(buf_id, notif_arr)
   local ns_id = H.ns_id.highlight
 
@@ -707,19 +717,42 @@ H.buffer_refresh = function(buf_id, notif_arr)
   -- Compute lines and highlight regions
   local lines, highlights = {}, {}
   for _, notif in ipairs(notif_arr) do
-    local notif_lines = vim.split(notif.msg, '\n')
-    for _, l in ipairs(notif_lines) do
-      table.insert(lines, l)
+    if type(notif.msg) == 'string' then
+      local notif_lines = vim.split(notif.msg, '\n')
+      for _, l in ipairs(notif_lines) do
+        lines[#lines + 1] = l
+      end
+      highlights[#highlights+1] = { group = notif.hl_group, from_line = #lines - #notif_lines + 1, to_line = #lines }
+    elseif type(notif.msg) == 'table' then
+      local line, col, newCol, msg, hlname = #lines or 0, 0, 0, nil, nil
+
+      for seqNr, chunkSequence in ipairs(notif.msg) do
+        if seqNr > 1 then
+          line, col = line + 1, 0
+        end
+        for _, chunk in ipairs(chunkSequence) do
+          hlname = hls[chunk[3]]
+          msg = vim.split(chunk[2], '\n')
+          for index, msgpart in ipairs(msg) do
+            if index > 1 then
+              line, col = line + 1, 0
+            end
+            newCol = col + #msgpart
+            lines[line + 1] = (lines[line + 1] or '') .. msgpart
+            highlights[#highlights + 1] = { group = hlname, from_line = line + 1, to_line = line + 1, from_col = col, to_col = newCol }
+            col = newCol
+          end
+        end
+      end
     end
-    table.insert(highlights, { group = notif.hl_group, from_line = #lines - #notif_lines + 1, to_line = #lines })
   end
 
   -- Set lines and highlighting
   vim.api.nvim_buf_set_lines(buf_id, 0, -1, true, lines)
-  local extmark_opts = { end_col = 0, hl_eol = true, hl_mode = 'combine' }
+  local extmark_opts = { end_row = 0, end_col = 0, hl_eol = true, hl_mode = 'combine', hl_group = 'Normal' }
   for _, hi_data in ipairs(highlights) do
-    extmark_opts.end_row, extmark_opts.hl_group = hi_data.to_line, hi_data.group
-    vim.api.nvim_buf_set_extmark(buf_id, ns_id, hi_data.from_line - 1, 0, extmark_opts)
+    extmark_opts.end_row, extmark_opts.hl_group, extmark_opts.end_col = hi_data.to_line - 1, hi_data.group, hi_data.to_col or 0
+    vim.api.nvim_buf_set_extmark(buf_id, ns_id, hi_data.from_line - 1, hi_data.from_col or 0, extmark_opts)
   end
 end
 
@@ -792,7 +825,7 @@ end
 
 -- Notifications --------------------------------------------------------------
 H.validate_msg = function(x)
-  if type(x) ~= 'string' then H.error('`msg` should be string.') end
+  if type(x) ~= 'string' and type(x) ~= 'table' then H.error('`msg` should be string or table of chunks.') end
 end
 
 H.validate_level = function(x)
@@ -805,7 +838,7 @@ end
 
 H.is_notification = function(x)
   return type(x) == 'table'
-    and type(x.msg) == 'string'
+    and (type(x.msg) == 'string' or type(x.msg) == 'table')
     and vim.log.levels[x.level] ~= nil
     and type(x.hl_group) == 'string'
     and type(x.ts_add) == 'number'
@@ -823,9 +856,11 @@ end
 
 H.notif_apply_format = function(notif_arr, format)
   for _, notif in ipairs(notif_arr) do
-    local res = format(notif)
-    if type(res) ~= 'string' then H.error('Output of `content.format` should be string.') end
-    notif.msg = res
+    if not notif.is_chunked then
+      local res = format(notif)
+      if type(res) ~= 'string' then H.error('Output of `content.format` should be string.') end
+      notif.msg = res
+    end
   end
   return notif_arr
 end
