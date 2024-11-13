@@ -727,9 +727,6 @@ H.buffer_refresh = function(buf_id, notif_arr)
       local line, col, newCol, msg, hlname = #lines or 0, 0, 0, nil, nil
 
       for seqNr, chunkSequence in ipairs(notif.msg) do
-        if seqNr > 1 then
-          line, col = line + 1, 0
-        end
         for _, chunk in ipairs(chunkSequence) do
           hlname = hls[chunk[3]]
           msg = vim.split(chunk[2], '\n')
