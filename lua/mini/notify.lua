@@ -239,6 +239,17 @@ MiniNotify.config = {
     winblend = 25,
   },
 }
+
+-- Refresh active notifications
+local function refresh()
+  if not vim.in_fast_event() then
+    MiniNotify.refresh()
+  else
+    -- Use `vim.schedule_wrap` for output to be usable inside `vim.uv` callbacks
+    vim.schedule(MiniNotify.refresh)
+  end
+end
+
 --minidoc_afterlines_end
 
 --- Make vim.notify wrapper
@@ -347,13 +358,7 @@ MiniNotify.add = function(msg, level, hl_group)
   -- inside of it in place. This makes sure that history entries are in sync.
   H.history[new_id], H.active[new_id] = new_notif, new_notif
 
-  -- Refresh active notifications
-  if not vim.in_fast_event() then
-    MiniNotify.refresh()
-  else
-    -- Use `vim.schedule_wrap` for output to be usable inside `vim.uv` callbacks
-    vim.schedule(function() MiniNotify.refresh() end)
-  end
+  refresh()
 
   return new_id
 end
@@ -380,7 +385,7 @@ MiniNotify.update = function(id, new_data)
   notif.hl_group = new_data.hl_group or notif.hl_group
   notif.ts_update = H.get_timestamp()
 
-  MiniNotify.refresh()
+  refresh()
 end
 
 --- Remove notification
@@ -396,7 +401,7 @@ MiniNotify.remove = function(id)
   notif.ts_remove = H.get_timestamp()
   H.active[id] = nil
 
-  MiniNotify.refresh()
+  refresh()
 end
 
 --- Remove all active notifications
@@ -409,7 +414,7 @@ MiniNotify.clear = function()
   end
   H.active = {}
 
-  MiniNotify.refresh()
+  refresh()
 end
 
 --- Refresh notification window
@@ -616,7 +621,7 @@ H.create_autocommands = function()
     vim.api.nvim_create_autocmd(event, { group = gr, pattern = pattern, callback = callback, desc = desc })
   end
 
-  au({ 'TabEnter', 'VimResized' }, '*', function() MiniNotify.refresh() end, 'Refresh notifications')
+  au({ 'TabEnter', 'VimResized' }, '*', refresh, 'Refresh notifications')
   au('ColorScheme', '*', H.create_default_hl, 'Ensure colors')
 end
 
