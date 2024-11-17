@@ -320,7 +320,7 @@ MiniNotify.make_notify = function(opts)
     if level_data.duration <= 0 then return end
 
     local id = MiniNotify.add(msg, level_name, level_data.hl_group)
-    vim.defer_fn(function() MiniNotify.remove(id) end, level_data.duration)
+    H.defer_remove(level_data.duration, id)
 
     return id
   end
@@ -384,6 +384,7 @@ MiniNotify.update = function(id, new_data)
   notif.level = new_data.level or notif.level
   notif.hl_group = new_data.hl_group or notif.hl_group
   notif.ts_update = H.get_timestamp()
+  H.defer_again(id)
 
   refresh()
 end
@@ -569,6 +570,29 @@ H.cache = {
   buf_id = nil,
   win_id = nil,
 }
+
+-- deepcopy of userdata are not allowed so we need a separate assignment table
+--- @type uv.uv_timer_t[]
+local removal_timers = {}
+
+function H.defer_remove(duration, id)
+  local timer = assert(vim.uv.new_timer())
+  timer:start(duration, duration, function ()
+    timer:stop()
+    timer:close()
+    MiniNotify.remove(id) -- schedule it while #1341 or similar not merged
+    removal_timers[id] = nil
+  end)
+  removal_timers[id] = timer
+end
+
+function H.defer_again(id)
+  local timer = removal_timers[id]
+  if not timer then
+    return
+  end
+  timer:again()
+end
 
 -- Helper functionality =======================================================
 -- Settings -------------------------------------------------------------------
