@@ -401,6 +401,7 @@ MiniNotify.remove = function(id)
   if notif == nil then return end
   notif.ts_remove = H.get_timestamp()
   H.active[id] = nil
+  H.destroy_removal_timer(id)
 
   refresh()
 end
@@ -575,13 +576,21 @@ H.cache = {
 --- @type uv.uv_timer_t[]
 local removal_timers = {}
 
+function H.destroy_removal_timer(id)
+  local timer = removal_timers[id]
+  if not timer then
+    return
+  end
+
+  timer:stop()
+  timer:close()
+  removal_timers[id] = nil
+end
+
 function H.defer_removal(duration, id)
   local timer = assert(vim.uv.new_timer())
   timer:start(duration, duration, function ()
-    timer:stop()
-    timer:close()
     MiniNotify.remove(id) -- schedule it while #1341 or similar not merged
-    removal_timers[id] = nil
   end)
   removal_timers[id] = timer
 end
