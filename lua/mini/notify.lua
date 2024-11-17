@@ -320,7 +320,7 @@ MiniNotify.make_notify = function(opts)
     if level_data.duration <= 0 then return end
 
     local id = MiniNotify.add(msg, level_name, level_data.hl_group)
-    H.defer_remove(level_data.duration, id)
+    H.defer_removal(level_data.duration, id)
 
     return id
   end
@@ -384,7 +384,7 @@ MiniNotify.update = function(id, new_data)
   notif.level = new_data.level or notif.level
   notif.hl_group = new_data.hl_group or notif.hl_group
   notif.ts_update = H.get_timestamp()
-  H.defer_again(id)
+  H.defer_removal_again(id)
 
   refresh()
 end
@@ -575,7 +575,7 @@ H.cache = {
 --- @type uv.uv_timer_t[]
 local removal_timers = {}
 
-function H.defer_remove(duration, id)
+function H.defer_removal(duration, id)
   local timer = assert(vim.uv.new_timer())
   timer:start(duration, duration, function ()
     timer:stop()
@@ -586,7 +586,7 @@ function H.defer_remove(duration, id)
   removal_timers[id] = timer
 end
 
-function H.defer_again(id)
+function H.defer_removal_again(id)
   local timer = removal_timers[id]
   if not timer then
     return
