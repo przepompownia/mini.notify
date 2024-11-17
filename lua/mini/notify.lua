@@ -733,19 +733,17 @@ H.buffer_refresh = function(buf_id, notif_arr)
     elseif type(notif.msg) == 'table' then
       local line, col, newCol, msg, hlname = #lines or 0, 0, 0, nil, nil
 
-      for seqNr, chunkSequence in ipairs(notif.msg) do
-        for _, chunk in ipairs(chunkSequence) do
-          hlname = hls[chunk[3]]
-          msg = vim.split(chunk[2], '\n')
-          for index, msgpart in ipairs(msg) do
-            if index > 1 then
-              line, col = line + 1, 0
-            end
-            newCol = col + #msgpart
-            lines[line + 1] = (lines[line + 1] or '') .. msgpart
-            highlights[#highlights + 1] = { group = hlname, from_line = line + 1, to_line = line + 1, from_col = col, to_col = newCol }
-            col = newCol
+      for _, chunk in ipairs(notif.msg) do
+        hlname = hls[chunk[3]]
+        msg = vim.split(chunk[2], '\n')
+        for index, msgpart in ipairs(msg) do
+          if index > 1 then
+            line, col = line + 1, 0
           end
+          newCol = col + #msgpart
+          lines[line + 1] = (lines[line + 1] or '') .. msgpart
+          highlights[#highlights + 1] = {group = hlname, from_line = line + 1, to_line = line + 1, from_col = col, to_col = newCol}
+          col = newCol
         end
       end
     end
